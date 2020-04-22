@@ -68,14 +68,18 @@ app.call_after_init(_data_setup)
 
 
 def record_parse_mnist(serialized_example, image_shape=None):
+    # 读取tf_record
     features = tf.parse_single_example(
         serialized_example,
         features={'image': tf.FixedLenFeature([], tf.string),
                   'label': tf.FixedLenFeature([], tf.int64)})
+    # 将图片转化为一个tensor
     image = tf.image.decode_image(features['image'])
     if image_shape:
         image.set_shape(image_shape)
+    # 相当于image = tf.pad(image, [[2,2], [2,2], [0,0]])，即在宽高上增加两行两列的0，而depth层面不做改变
     image = tf.pad(image, [[2] * 2, [2] * 2, [0] * 2])
+    # tf.cast将tensor转为float32，并且归一化
     image = tf.cast(image, tf.float32) * (2.0 / 255) - 1.0
     return dict(image=image, label=features['label'])
 
@@ -92,6 +96,7 @@ def record_parse(serialized_example, image_shape=None):
     return dict(image=image, label=features['label'])
 
 
+# 计算数据集图片的平均值和标准差
 def compute_mean_std(data: tf.data.Dataset):
     data = data.map(lambda x: x['image']).batch(1024).prefetch(1)
     data = data.make_one_shot_iterator().get_next()
@@ -263,6 +268,7 @@ class DataSets:
                 train_labeled = train_labeled.memoize()
                 train_unlabeled = train_unlabeled.memoize()
 
+            # 是否白化
             if FLAGS.whiten:
                 mean, std = compute_mean_std(train_labeled.concatenate(train_unlabeled))
             else:

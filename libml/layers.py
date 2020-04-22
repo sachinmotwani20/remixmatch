@@ -90,10 +90,13 @@ def mse_from_logits(output_logits, target_logits):
 
 
 def interleave_offsets(batch, nu):
+    # 求平均值，计算每个groups至少包含多少个样本
     groups = [batch // (nu + 1)] * (nu + 1)
+    # 除不尽时，将多余样本均匀地分配到各个groups中
     for x in range(batch - sum(groups)):
         groups[-x - 1] += 1
     offsets = [0]
+    # 根据分配情况，计算每个group在batch中的起始位置（offset）
     for g in groups:
         offsets.append(offsets[-1] + g)
     assert offsets[-1] == batch
@@ -105,6 +108,7 @@ def interleave(xy, batch):
     offsets = interleave_offsets(batch, nu)
     xy = [[v[offsets[p]:offsets[p + 1]] for p in range(nu + 1)] for v in xy]
     for i in range(1, nu + 1):
+        # 在一个batch中混合带标签的数据和不带标签的数据,其中0始终表示带标签的数据
         xy[0][i], xy[i][i] = xy[i][i], xy[0][i]
     return [tf.concat(v, axis=0) for v in xy]
 
@@ -121,7 +125,7 @@ def shakeshake(a, b, training):
     mixb = a + mu[::1] * (b - a)
     return tf.stop_gradient(mixf - mixb) + mixb
 
-
+# 滑动平均，反映样本的标签分布情况
 class PMovingAverage:
     def __init__(self, name, nclass, buf_size):
         # MEAN aggregation is used by DistributionStrategy to aggregate
@@ -175,21 +179,26 @@ class MixMode:
         assert mode in self.MODES
         self.mode = mode
 
+    # mixup的实现
     @staticmethod
     def augment_pair(x0, l0, x1, l1, beta, **kwargs):
         del kwargs
         if isinstance(beta, numbers.Integral) and beta <= 0:
             return x0, l0
 
+        # 生成服从beta分布的随机变量, s = batch size
         def np_beta(s, beta):  # TF implementation seems unreliable for beta below 0.2
             return np.random.beta(beta, beta, s).astype('f')
 
         with tf.device('/cpu'):
             mix = tf.py_func(np_beta, [tf.shape(x0)[0], beta], tf.float32)
             mix = tf.reshape(tf.maximum(mix, 1 - mix), [tf.shape(x0)[0], 1, 1, 1])
+            # 生成range(0, batch size), 并随机打乱元素顺序
             index = tf.random_shuffle(tf.range(tf.shape(x0)[0]))
+        # 按index的顺序来对batch进行重排，方便后续mixup
         xs = tf.gather(x1, index)
         ls = tf.gather(l1, index)
+        # 将任意的两个样本进行mixup
         xmix = x0 * mix + xs * (1 - mix)
         lmix = l0 * mix[:, :, 0, 0] + ls * (1 - mix[:, :, 0, 0])
         return xmix, lmix
@@ -198,6 +207,7 @@ class MixMode:
     def augment(x, l, beta, **kwargs):
         return MixMode.augment_pair(x, l, x, l, beta, **kwargs)
 
+    # xl[0]包含所有的labeled data, xl[1:]则包含unlabeled data, betal = [beta, beta]
     def __call__(self, xl: list, ll: list, betal: list):
         assert len(xl) == len(ll) >= 2
         assert len(betal) == 2

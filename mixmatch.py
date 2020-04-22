@@ -66,12 +66,18 @@ class MixMatch(models.MultiModel):
         return EasyDict(p_target=p_target, p_model=p_model_y)
 
     def model(self, batch, lr, wd, ema, beta, w_match, warmup_kimg=1024, nu=2, mixmode='xxy.yxy', dbuf=128, **kwargs):
+        # height, width, colors
         hwc = [self.dataset.height, self.dataset.width, self.dataset.colors]
+        # labeled data [batch,32,32,3]
         xt_in = tf.placeholder(tf.float32, [batch] + hwc, 'xt')  # For training
+        # labeled data [?,32,32,3]
         x_in = tf.placeholder(tf.float32, [None] + hwc, 'x')
+        # unlabeled data [?,2,32,32,3], 每个未标记样本生成两个数据增强样本（nu=2）
         y_in = tf.placeholder(tf.float32, [batch, nu] + hwc, 'y')
         l_in = tf.placeholder(tf.int32, [batch], 'labels')
+        # 使用weight decay调整权重，防止过拟合
         wd *= lr
+         # 在训练的前期逐步让w_match增长到最大值
         w_match *= tf.clip_by_value(tf.cast(self.step, tf.float32) / (warmup_kimg << 10), 0, 1)
         augment = MixMode(mixmode)
         classifier = lambda x, **kw: self.classifier(x, **kw, **kwargs).logits
@@ -83,8 +89,10 @@ class MixMatch(models.MultiModel):
         # Known (or inferred) true unlabeled distribution
         p_data = layers.PData(self.dataset)
 
+        # 将y_in([batch, nu, hwc]) 转化为[nu * batch, hwc]
         y = tf.reshape(tf.transpose(y_in, [1, 0, 2, 3, 4]), [-1] + hwc)
         guess = self.guess_label(tf.split(y, nu), classifier, T=0.5, **kwargs)
+        # ly：unlabeled data的目标标签，当做真实标签使用
         ly = tf.stop_gradient(guess.p_target)
         lx = tf.one_hot(l_in, self.nclass)
         xy, labels_xy = augment([xt_in] + tf.split(y, nu), [lx] + [ly] * nu, [beta, beta])

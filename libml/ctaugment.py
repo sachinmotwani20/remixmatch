@@ -24,7 +24,9 @@ Sample = namedtuple('Sample', ('train', 'probe'))
 
 
 def register(*bins):
+    # f是传入的函数
     def wrap(f):
+        # 将函数名称注册到OPS中,key为函数名,value是一个tuple，即OP(f, bins)
         OPS[f.__name__] = OP(f, bins)
         return f
 
@@ -43,10 +45,11 @@ def apply(x, ops):
 class CTAugment:
     def __init__(self, depth=2, th=0.85, decay=0.99):
         self.decay = decay
-        self.depth = depth
+        self.depth = depth  # 表示每次选择2种数据增强方法
         self.th = th
         self.rates = {}
         for k, op in OPS.items():
+            # 初始化，对所有的增强方法构造weight = 1
             self.rates[k] = tuple([np.ones(x, 'f') for x in op.bins])
 
     def rate_to_p(self, rate):
@@ -95,6 +98,7 @@ def _enhance(x, op, level):
 
 
 def _imageop(x, op, level):
+    # 对x和op(x)两张图片进行加权融合
     return Image.blend(x, op(x), level)
 
 
@@ -102,31 +106,32 @@ def _filter(x, op, level):
     return Image.blend(x, x.filter(op), level)
 
 
+# 自动调整对比度，将最暗(最亮)的点调整至black(white),再与原始图片进行融合
 @register(17)
 def autocontrast(x, level):
     return _imageop(x, ImageOps.autocontrast, level)
 
-
+# 图片模糊
 @register(17)
 def blur(x, level):
     return _filter(x, ImageFilter.BLUR, level)
 
-
+# 调整图片的亮度，0返回black image，1返回original image
 @register(17)
 def brightness(x, brightness):
     return _enhance(x, ImageEnhance.Brightness, brightness)
 
-
+# 调整色彩
 @register(17)
 def color(x, color):
     return _enhance(x, ImageEnhance.Color, color)
 
-
+# 调整对比度
 @register(17)
 def contrast(x, contrast):
     return _enhance(x, ImageEnhance.Contrast, contrast)
 
-
+# 将一个随机的L*width区域设为灰色
 @register(17)
 def cutout(x, level):
     """Apply cutout to pil_img at the specified level."""
@@ -142,28 +147,28 @@ def cutout(x, level):
             pixels[i, j] = (127, 127, 127)  # set the colour accordingly
     return x
 
-
+# Equalize the image histogram
 @register(17)
 def equalize(x, level):
     return _imageop(x, ImageOps.equalize, level)
 
-
+# 对图片进行反色处理
 @register(17)
 def invert(x, level):
     return _imageop(x, ImageOps.invert, level)
 
-
+# 返回原图片
 @register()
 def identity(x):
     return x
 
-
+# 减少每个颜色通道的位数
 @register(8)
 def posterize(x, level):
     level = 1 + int(level * 7.999)
     return ImageOps.posterize(x, level)
 
-
+# 裁剪中心处一个L*width的crop，再resize到原图片的大小
 @register(17, 6)
 def rescale(x, scale, method):
     s = x.size
@@ -173,7 +178,7 @@ def rescale(x, scale, method):
     method = methods[int(method * 5.99)]
     return x.crop(crop).resize(x.size, method)
 
-
+# 旋转图片
 @register(17)
 def rotate(x, angle):
     angle = int(np.round((2 * angle - 1) * 45))
@@ -201,7 +206,7 @@ def shear_y(x, shear):
 def smooth(x, level):
     return _filter(x, ImageFilter.SMOOTH, level)
 
-
+# 对超过阈值的点进行反色
 @register(17)
 def solarize(x, th):
     th = int(th * 255.999)
@@ -218,3 +223,5 @@ def translate_x(x, delta):
 def translate_y(x, delta):
     delta = (2 * delta - 1) * 0.3
     return x.transform(x.size, Image.AFFINE, (1, 0, 0, 0, 1, delta))
+
+# 仿射变换可参见: https://blog.csdn.net/robert_chen1988/article/details/80498805
