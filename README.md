@@ -24,6 +24,8 @@ conda create --name <env_name>  --file requirements.txt -y
 conda activate <env_name>
 conda install -c conda-forge easydict -y
 conda install -c anaconda pillow -y
+conda install -c bioconda perl-xml-libxml -y
+
 ```
 
 ### Install datasets
