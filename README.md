@@ -18,6 +18,12 @@ virtualenv -p python3 --system-site-packages env3
 pip install -r requirements.txt
 ```
 
+### Conda 
+
+conda create --name <env_name>  --file requirements.txt -y
+conda activate <env_name>
+conda install -c conda-forge easydict -y
+
 ### Install datasets
 
 ```bash
