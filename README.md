@@ -19,10 +19,11 @@ pip install -r requirements.txt
 ```
 
 ### Conda 
-
+```
 conda create --name <env_name>  --file requirements.txt -y
 conda activate <env_name>
 conda install -c conda-forge easydict -y
+```
 
 ### Install datasets
 
